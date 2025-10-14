@@ -22,10 +22,10 @@ Notes:
 
 Examples:
   # Install the newest release (autodetect ROS)
-  curl -fsSL https://raw.githubusercontent.com/insaion/assets/main/insaion-agent/config/install-agent.sh | sudo bash -s --
+  curl -fsSL https://raw.githubusercontent.com/insaion/assets/main/install-agent.sh | sudo bash -s --
 
   # Specify ROS distro manually and install the newest release
-  curl -fsSL https://raw.githubusercontent.com/insaion/assets/main/insaion-agent/config/install-agent.sh | sudo bash -s -- --ros humble
+  curl -fsSL https://raw.githubusercontent.com/insaion/assets/main/install-agent.sh | sudo bash -s -- --ros humble
 EOF
 }
 
