@@ -2,7 +2,7 @@
 
 # Installer for Insaion Agent (clean user output)
 # - Installs newest release (latest)
-# - Autodetects ROS distro or accepts --ros override
+# - Autodetects ROS distro or generic Ubuntu
 # - Installs prerequisites quietly
 # - Downloads and installs a matching release for your system
 
@@ -17,11 +17,13 @@ usage() {
 Usage: install-agent.sh [--url BASE_URL] [--ros ROS_DISTRO]
 
 Notes:
-  This installer always selects the newest release automatically ("latest").
-  Manually pinning a release is not supported.
+  - This installer always selects the newest release automatically ("latest").
+  - It will auto-detect your system (ROS or Generic Ubuntu) and download
+    the correct package.
+  - The --ros flag forces a ROS-specific installation.
 
 Examples:
-  # Install the newest release (autodetect ROS)
+  # Install the newest release (autodetect system)
   curl -fsSL https://raw.githubusercontent.com/insaion/assets/main/install-agent.sh | sudo bash -s --
 
   # Specify ROS distro manually and install the newest release
@@ -88,6 +90,21 @@ detect_ros_distro() {
   echo ""
 }
 
+# New function to detect Ubuntu version for non-ROS systems
+detect_ubuntu_codename() {
+  if [ -f "/etc/os-release" ]; then
+    # Source the file to get variables like $ID and $VERSION_CODENAME
+    . /etc/os-release
+    if [ "$ID" = "ubuntu" ]; then
+      echo "$VERSION_CODENAME"
+    else
+      echo "" # Not Ubuntu
+    fi
+  else
+    echo "" # Not a modern systemd-based Linux
+  fi
+}
+
 detect_arch() {
   local m
   m=$(dpkg --print-architecture 2>/dev/null || true)
@@ -114,9 +131,6 @@ download_file() {
 }
 
 # Ensure at least one network downloader is present (curl or wget).
-# This is a small bootstrap step run before any network calls that might
-# otherwise use wget directly. It will attempt to install curl/wget using apt
-# when run as root (or via sudo through run_cmd).
 ensure_network_utils() {
   if command -v curl >/dev/null 2>&1 || command -v wget >/dev/null 2>&1; then
     return 0
@@ -216,21 +230,66 @@ main() {
   ROS=$(detect_ros_distro)
   local ARCH
   ARCH=$(detect_arch)
+  local pattern=""
+  local system_desc=""
 
   if [[ -n "${ROS_ARG-}" ]]; then
     ROS="$ROS_ARG"
-    echo "Using ROS distribution: $ROS"
-  else
-    if [[ -z "$ROS" ]]; then
-      echo "ERROR: could not detect ROS distro automatically and no --ros was provided. Aborting." >&2
-      echo "Either install /opt/ros/<distro> or pass --ros <distro> to the installer." >&2
-      exit 1
-    else
-      echo "Detected ROS distribution: $ROS"
-    fi
+    echo "Using --ros override: $ROS"
   fi
 
   echo "Detected system architecture: $ARCH"
+
+  if [[ -n "$ROS" ]]; then
+    # --- ROS Mode ---
+    system_desc="ROS $ROS ($ARCH)"
+    echo "Detected system: $system_desc"
+    
+    local esc_ros
+    esc_ros=$(printf '%s' "$ROS" | sed 's/[][^$.*/]/\\&/g')
+    local esc_arch
+    esc_arch=$(printf '%s' "$ARCH" | sed 's/[][^$.*/]/\\&/g')
+    # Expect filenames of the form: ros-<distro>-cpp-agent_<version>_<arch>.deb
+    pattern="^ros-${esc_ros}-cpp-agent_[^_]+_${esc_arch}\\.deb$"
+
+  else
+    # --- Generic Ubuntu Mode ---
+    echo "No ROS installation detected. Checking for generic Ubuntu support..."
+    local CODENAME
+    CODENAME=$(detect_ubuntu_codename)
+    
+    if [[ -z "$CODENAME" ]]; then
+        echo "ERROR: No ROS installation detected and this system is not a recognized Ubuntu release." >&2
+        echo "If this is a ROS system, try running with --ros <distro>" >&2
+        exit 1
+    fi
+
+    # Use codename-based matching (e.g., jammy, noble)
+    local UBUNTU_CODENAME_TAG=""
+    case "$CODENAME" in
+      "jammy")  # 22.04
+        UBUNTU_CODENAME_TAG="jammy"
+        ;;
+      "noble")  # 24.04
+        UBUNTU_CODENAME_TAG="noble"
+        ;;
+      *)
+        echo "ERROR: Your Ubuntu version ($CODENAME) is not officially supported for the generic agent." >&2
+        echo "Supported versions are: jammy (22.04), noble (24.04)."
+        exit 1
+        ;;
+    esac
+    
+    system_desc="Generic Ubuntu $CODENAME ($ARCH)"
+    echo "Detected system: $system_desc"
+
+    local esc_codename
+    esc_codename=$(printf '%s' "$UBUNTU_CODENAME_TAG" | sed 's/[][^$.*/]/\\&/g')
+    local esc_arch
+    esc_arch=$(printf '%s' "$ARCH" | sed 's/[][^$.*/]/\\&/g')
+    # Match only by codename: insaion-agent_<version>_<codename>_<arch>.deb
+    pattern="^insaion-agent_[^_]+_${esc_codename}_${esc_arch}\\.deb$"
+  fi
 
   # Ensure network downloader tools are present before making HTTP requests
   ensure_network_utils || true
@@ -250,14 +309,11 @@ main() {
   fi
 
   if [[ ! -s "$ASSETS_JSON" ]]; then
-    echo "ERROR: No compatible agent found for this system." >&2
+    echo "ERROR: Could not fetch release info from GitHub API." >&2
+    echo "URL: $release_api_url" >&2
     exit 2
   fi
 
-  esc_ros=$(printf '%s' "$ROS" | sed 's/[][^$.*/]/\\&/g')
-  esc_arch=$(printf '%s' "$ARCH" | sed 's/[][^$.*/]/\\&/g')
-  # Expect filenames of the form: ros-<distro>-cpp-agent_<version>_<arch>.deb
-  pattern="^ros-${esc_ros}-cpp-agent_[^_]+_${esc_arch}\\.deb$"
   asset_name=""
   if command -v jq >/dev/null 2>&1; then
     asset_name=$(jq -r --arg pat "$pattern" '.assets[].name | select(test($pat))' "$ASSETS_JSON" | head -n1 || true)
@@ -266,10 +322,11 @@ main() {
   fi
 
   if [[ -z "$asset_name" ]]; then
-    echo "ERROR: No compatible agent found for this system." >&2
+    echo "ERROR: No compatible agent package found for your system ($system_desc) in release $TAG_RESOLVED." >&2
     exit 2
   fi
 
+  echo "Found matching package: $asset_name"
   echo "Downloading agent..."
   DEB_URL="${BASE_URL}/${TAG_RESOLVED}/${asset_name}"
   if ! download_file "$DEB_URL" "$DEB_FILE" || [[ ! -s "$DEB_FILE" ]]; then
