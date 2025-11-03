@@ -249,8 +249,8 @@ main() {
     esc_ros=$(printf '%s' "$ROS" | sed 's/[][^$.*/]/\\&/g')
     local esc_arch
     esc_arch=$(printf '%s' "$ARCH" | sed 's/[][^$.*/]/\\&/g')
-    # Expect filenames of the form: ros-<distro>-cpp-agent_<version>_<arch>.deb
-    pattern="^ros-${esc_ros}-cpp-agent_[^_]+_${esc_arch}\\.deb$"
+    # Expect filenames of the form: ros-<distro>-insaion-agent_<version>_<arch>.deb
+    pattern="^ros-${esc_ros}-insaion-agent_[^_]+_${esc_arch}\\.deb$"
 
   else
     # --- Generic Ubuntu Mode ---
