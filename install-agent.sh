@@ -14,7 +14,7 @@ GITHUB_BASE="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download"
 
 usage() {
   cat <<EOF
-Usage: install-agent.sh [--url BASE_URL] [--ros ROS_DISTRO]
+Usage: install-agent.sh [--url BASE_URL] [--ros ROS_DISTRO] [--tag TAG]
 
 Notes:
   - This installer always selects the newest release automatically ("latest").
@@ -28,6 +28,9 @@ Examples:
 
   # Specify ROS distro manually and install the newest release
   curl -fsSL https://raw.githubusercontent.com/insaion/assets/main/install-agent.sh | sudo bash -s -- --ros humble
+
+  # Install a specific release tag (e.g., prerelease/RC)
+  curl -fsSL https://raw.githubusercontent.com/insaion/assets/main/install-agent.sh | sudo bash -s -- --tag v1.2.0-rc.1
 EOF
 }
 
@@ -44,6 +47,10 @@ while [[ ${#-} -gt 0 ]]; do
       ;;
     --url)
       BASE_URL="${2-}"
+      shift 2 || true
+      ;;
+    --tag)
+      TAG="${2-}"
       shift 2 || true
       ;;
     --help|-h)
