@@ -164,7 +164,7 @@ install_prereqs() {
 
   # Ensure apt caches are available and basic tools installed
   run_cmd "apt-get -qq update -y"
-  run_cmd "apt-get -qq install -y --no-install-recommends curl wget ca-certificates gnupg lsb-release apt-transport-https jq gettext-base || true"
+  run_cmd "apt-get -qq install -y --no-install-recommends curl wget ca-certificates gnupg lsb-release apt-transport-https jq || true"
 
   # Install monitoring agent repository using a verified key fingerprint (optional)
   local keyring_dir=/etc/apt/keyrings
