@@ -35,7 +35,7 @@ EOF
 }
 
 # --- Parse args ---
-TAG="latest"
+TAG="v0.7.0"
 BASE_URL="${GITHUB_BASE}"
 ROS_ARG=""
 
@@ -164,7 +164,7 @@ install_prereqs() {
 
   # Ensure apt caches are available and basic tools installed
   run_cmd "apt-get -qq update -y"
-  run_cmd "apt-get -qq install -y --no-install-recommends curl wget ca-certificates gnupg lsb-release apt-transport-https jq || true"
+  run_cmd "apt-get -qq install -y --no-install-recommends curl wget ca-certificates gnupg lsb-release apt-transport-https jq libcap2-bin || true"
 
   # Install monitoring agent repository using a verified key fingerprint (optional)
   local keyring_dir=/etc/apt/keyrings
@@ -354,8 +354,27 @@ main() {
     run_cmd "dpkg -i '$DEB_FILE' || true"
   fi
 
-  # Ensure runtime directory exists
+  # Ensure runtime directory exists and is writable by the invoking user.
   run_cmd "mkdir -p /var/lib/insaion-agent"
+  run_cmd "setcap cap_net_raw=eip /usr/bin/telegraf"
+
+  local owner_user=""
+  if [[ -n "${SUDO_USER-}" && "${SUDO_USER}" != "root" ]]; then
+    owner_user="${SUDO_USER}"
+  elif [[ -n "${USER-}" && "${USER}" != "root" ]]; then
+    owner_user="${USER}"
+  fi
+
+  if [[ -n "$owner_user" ]] && id "$owner_user" >/dev/null 2>&1; then
+    local owner_group
+    owner_group=$(id -gn "$owner_user" 2>/dev/null || echo "$owner_user")
+    run_cmd "chown -R '$owner_user:$owner_group' /var/lib/insaion-agent"
+    run_cmd "chmod 0750 /var/lib/insaion-agent"
+  else
+    # Fallback when no non-root owner can be determined.
+    run_cmd "chown root:root /var/lib/insaion-agent"
+    run_cmd "chmod 0755 /var/lib/insaion-agent"
+  fi
   echo "Insaion Agent installation completed."
 }
 
