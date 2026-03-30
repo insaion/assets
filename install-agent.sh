@@ -35,7 +35,7 @@ EOF
 }
 
 # --- Parse args ---
-TAG="v0.7.0"
+TAG="latest"
 BASE_URL="${GITHUB_BASE}"
 ROS_ARG=""
 
