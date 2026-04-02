@@ -55,7 +55,6 @@ echo "deb [signed-by=/etc/apt/trusted.gpg.d/influxdata-archive.gpg] https://repo
 
 # 5. Add Insaion Repository (Gemfury)
 echo "INFO: Configuring Insaion repository..."
-# NOTE: Replace 'https://apt.fury.io/insaion/' with your actual Gemfury URL if it is different
 curl -fsSL https://apt.fury.io/insaion/gpg.key | gpg --dearmor --yes -o /etc/apt/trusted.gpg.d/insaion.gpg
 echo "deb https://apt.fury.io/insaion/ /" > /etc/apt/sources.list.d/insaion.list
 
