@@ -32,15 +32,38 @@ find_ros_distro() {
 
 # 2. Detect Environment
 ROS_DISTRO=$(find_ros_distro)
+OS_CODENAME="${VERSION_CODENAME:-$(lsb_release -cs 2>/dev/null || true)}"
 
 if [ -n "$ROS_DISTRO" ]; then
     echo "INFO: ROS 2 '$ROS_DISTRO' detected."
     PACKAGE_NAME="ros-${ROS_DISTRO}-insaion-agent"
+
+    if [ "$ROS_DISTRO" = "humble" ]; then
+        APT_REPO_NAME="insaion-jammy"
+    else
+        APT_REPO_NAME="insaion-noble"
+    fi
 else
     echo "INFO: No ROS 2 installation detected."
     echo "INFO: Defaulting to generic Native Ubuntu agent."
     PACKAGE_NAME="insaion-agent"
+
+    case "$OS_CODENAME" in
+        jammy)
+            APT_REPO_NAME="insaion-jammy"
+            ;;
+        noble)
+            APT_REPO_NAME="insaion-noble"
+            ;;
+        *)
+            echo "FATAL: Unsupported Ubuntu codename '$OS_CODENAME' for generic package install."
+            echo "Supported codenames: jammy, noble"
+            exit 1
+            ;;
+    esac
 fi
+
+echo "INFO: Selected Gemfury APT repository: $APT_REPO_NAME"
 
 # 3. Install prerequisites for adding repositories
 echo "INFO: Installing network and repository prerequisites..."
@@ -55,8 +78,9 @@ echo "deb [signed-by=/etc/apt/trusted.gpg.d/influxdata-archive.gpg] https://repo
 
 # 5. Add Insaion Repository (Gemfury)
 echo "INFO: Configuring Insaion repository..."
-curl -fsSL https://apt.fury.io/insaion/gpg.key | gpg --dearmor --yes -o /etc/apt/trusted.gpg.d/insaion.gpg
-echo "deb https://apt.fury.io/insaion/ /" > /etc/apt/sources.list.d/insaion.list
+# Both Gemfury repositories use the same GPG key.
+curl -fsSL https://apt.fury.io/insaion-jammy/gpg.key | gpg --dearmor --yes -o /etc/apt/trusted.gpg.d/insaion.gpg
+echo "deb https://apt.fury.io/${APT_REPO_NAME}/ /" > /etc/apt/sources.list.d/insaion.list
 
 # ---------------------------------------------------------
 # 6. Pre-configure Agent Environment Overrides
