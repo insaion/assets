@@ -72,9 +72,13 @@ apt-get update -qq
 apt-get install -y -qq curl gnupg apt-transport-https software-properties-common lsb-release
 
 # 4. Add InfluxData Repository (For Telegraf dependency)
-echo "INFO: Configuring InfluxData repository..."
 curl -fsSL https://repos.influxdata.com/influxdata-archive.key | gpg --dearmor --yes -o /etc/apt/trusted.gpg.d/influxdata-archive.gpg
 echo "deb [signed-by=/etc/apt/trusted.gpg.d/influxdata-archive.gpg] https://repos.influxdata.com/debian stable main" > /etc/apt/sources.list.d/influxdata.list
+
+# 4b. Pin Telegraf to 1.38.2 to avoid version conflicts
+apt-get update -qq
+apt-get install -y -qq "telegraf=1.38.2*"
+apt-mark hold telegraf
 
 # 5. Add Insaion Repository (Gemfury)
 echo "INFO: Configuring Insaion repository..."
@@ -147,7 +151,7 @@ export ENROLLMENT_KEY CUSTOM_ROS_SETUP RMW_IMPLEMENTATION FASTRTPS_DEFAULT_PROFI
 echo "INFO: Updating package lists..."
 apt-get update -qq
 echo "INFO: Installing package: $PACKAGE_NAME"
-apt-get install -y "$PACKAGE_NAME"
+apt-get install -y "$PACKAGE_NAME" --no-upgrade
 
 # 8. Post-Installation Output
 echo ""
@@ -165,7 +169,3 @@ echo "  - View live logs:     sudo journalctl -u insaion-agent -f"
 echo "  - Check status:       sudo systemctl status insaion-agent"
 echo "  - Restart agent:      sudo systemctl restart insaion-agent"
 echo ""
-if [ -n "$ROS_DISTRO" ] && [ -z "$CUSTOM_ROS_SETUP" ]; then
-    echo "Note: If you use custom ROS 2 messages or a custom DDS profile (Unicast),"
-    echo "please add those variables to '/etc/default/insaion-agent' and restart the service."
-fi
