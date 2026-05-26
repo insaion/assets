@@ -55,9 +55,12 @@ else
         noble)
             APT_REPO_NAME="insaion-noble"
             ;;
+        resolute)
+            APT_REPO_NAME="insaion-resolute"
+            ;;
         *)
             echo "FATAL: Unsupported Ubuntu codename '$OS_CODENAME' for generic package install."
-            echo "Supported codenames: jammy, noble"
+            echo "Supported codenames: jammy, noble, resolute"
             exit 1
             ;;
     esac
