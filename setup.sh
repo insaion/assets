@@ -24,6 +24,8 @@ find_ros_distro() {
     fi
     # If not set, check common distros
     if [ -f "/opt/ros/rolling/setup.bash" ]; then echo "rolling"; return; fi
+    if [ -f "/opt/ros/lyrical/setup.bash" ]; then echo "lyrical"; return; fi
+    if [ -f "/opt/ros/kilted/setup.bash" ]; then echo "kilted"; return; fi
     if [ -f "/opt/ros/jazzy/setup.bash" ]; then echo "jazzy"; return; fi
     if [ -f "/opt/ros/humble/setup.bash" ]; then echo "humble"; return; fi
     
@@ -40,6 +42,8 @@ if [ -n "$ROS_DISTRO" ]; then
 
     if [ "$ROS_DISTRO" = "humble" ]; then
         APT_REPO_NAME="insaion-jammy"
+    elif [ "$ROS_DISTRO" = "lyrical" ]; then
+        APT_REPO_NAME="insaion-resolute"
     else
         APT_REPO_NAME="insaion-noble"
     fi
