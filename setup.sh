@@ -82,9 +82,9 @@ apt-get install -y -qq curl gnupg apt-transport-https software-properties-common
 curl -fsSL https://repos.influxdata.com/influxdata-archive.key | gpg --dearmor --yes -o /etc/apt/trusted.gpg.d/influxdata-archive.gpg
 echo "deb [signed-by=/etc/apt/trusted.gpg.d/influxdata-archive.gpg] https://repos.influxdata.com/debian stable main" > /etc/apt/sources.list.d/influxdata.list
 
-# 4b. Pin Telegraf to 1.38.2 to avoid version conflicts
+# 4b. Pin Telegraf to 1.39.* to avoid version conflicts
 apt-get update -qq
-apt-get install -y -qq "telegraf=1.38.2*"
+apt-get install -y -qq "telegraf=1.39.*"
 apt-mark hold telegraf
 
 # 5. Add Insaion Repository (Gemfury)
