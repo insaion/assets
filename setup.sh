@@ -82,10 +82,17 @@ apt-get install -y -qq curl gnupg apt-transport-https software-properties-common
 curl -fsSL https://repos.influxdata.com/influxdata-archive.key | gpg --dearmor --yes -o /etc/apt/trusted.gpg.d/influxdata-archive.gpg
 echo "deb [signed-by=/etc/apt/trusted.gpg.d/influxdata-archive.gpg] https://repos.influxdata.com/debian stable main" > /etc/apt/sources.list.d/influxdata.list
 
-# 4b. Pin Telegraf to 1.39.* to avoid version conflicts
-apt-get update -qq
-apt-get install -y -qq "telegraf=1.39.*"
-apt-mark hold telegraf
+# 4b. Migrate away from the legacy telegraf hold
+# The tested telegraf range now lives in the agent package itself
+# (telegraf >= 1.39.0, << 1.40.0), so apt resolves and enforces it on every
+# install and upgrade without any pin or hold on the machine. Older installers
+# ran `apt-mark hold telegraf`, which apt treats as an absolute veto: the next
+# agent release needing a newer telegraf could never be installed and
+# `apt upgrade` would silently keep the agent back. Clear both the hold and any
+# pin file written by an earlier version of this script. Telegraf itself is
+# installed later, as a dependency of the agent package (step 7).
+apt-mark unhold telegraf >/dev/null 2>&1 || true
+rm -f /etc/apt/preferences.d/insaion-telegraf.pref
 
 # 5. Add Insaion Repository (Gemfury)
 echo "INFO: Configuring Insaion repository..."
@@ -172,7 +179,8 @@ echo "To pair this device, open your browser and navigate to:"
 echo "http://$(hostname -I | awk '{print $1}'):9090"
 echo ""
 echo "Useful Commands:"
-echo "  - View live logs:     sudo journalctl -u insaion-agent -f"
-echo "  - Check status:       sudo systemctl status insaion-agent"
-echo "  - Restart agent:      sudo systemctl restart insaion-agent"
+echo "  - View live logs:           sudo journalctl -u insaion-agent -f"
+echo "  - Check status:             sudo systemctl status insaion-agent"
+echo "  - Restart agent:            sudo systemctl restart insaion-agent"
+echo "  - Bundle logs for support:  sudo insaion-agent --support-bundle"
 echo ""
