@@ -1,0 +1,145 @@
+name: Test setup.sh
+
+# setup.sh is the entry point every customer runs. It is the one piece of the
+# distribution chain that is not covered by the agent repository's CI, so it is
+# tested here against the live apt repository.
+on:
+  pull_request:
+    paths:
+      - "setup.sh"
+      - ".github/workflows/test-setup.yml"
+  push:
+    branches: [main]
+    paths:
+      - "setup.sh"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Lint
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq shellcheck
+          bash -n setup.sh
+          # Informational: the script predates shellcheck and carries known
+          # style findings. Errors are what matter here.
+          shellcheck --severity=error setup.sh
+
+  install:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Generic agent, one job per supported Ubuntu release.
+          - image: ubuntu:22.04
+            expect_package: insaion-agent
+          - image: ubuntu:24.04
+            expect_package: insaion-agent
+          - image: ubuntu:26.04
+            expect_package: insaion-agent
+          # ROS flavours: the script must detect the distro and pick the
+          # matching package and suite.
+          - image: ros:humble-ros-base
+            expect_package: ros-humble-insaion-agent
+          - image: ros:jazzy-ros-base
+            expect_package: ros-jazzy-insaion-agent
+          - image: ros:kilted-ros-base
+            expect_package: ros-kilted-insaion-agent
+          - image: ros:lyrical-ros-base
+            expect_package: ros-lyrical-insaion-agent
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install with setup.sh
+        run: |
+          docker run --rm \
+            -e DEBIAN_FRONTEND=noninteractive \
+            -e INSAION_APT_REPO_URL="${{ vars.APT_REPO_URL || 'https://apt.insaion.com' }}" \
+            -e EXPECT_PACKAGE="${{ matrix.expect_package }}" \
+            -v "${{ github.workspace }}/setup.sh:/setup.sh:ro" \
+            "${{ matrix.image }}" bash -euo pipefail -c '
+              bash /setup.sh
+              echo "--- asserting the expected package was chosen ---"
+              dpkg-query -W "$EXPECT_PACKAGE"
+              test -x /usr/lib/insaion-agent/bin/telegraf
+              /usr/lib/insaion-agent/bin/telegraf --version
+              test -f /etc/insaion-agent/telegraf/telegraf.conf.template
+              test -f /etc/default/insaion-agent
+              test -f /etc/apt/sources.list.d/insaion.sources
+              test -f /usr/share/keyrings/insaion-archive-keyring.gpg
+              # The retired repository must not still be configured.
+              test ! -f /etc/apt/sources.list.d/insaion.list
+              echo "setup.sh OK"
+            '
+
+      - name: Re-run setup.sh (must be idempotent)
+        run: |
+          docker run --rm \
+            -e DEBIAN_FRONTEND=noninteractive \
+            -e INSAION_APT_REPO_URL="${{ vars.APT_REPO_URL || 'https://apt.insaion.com' }}" \
+            -v "${{ github.workspace }}/setup.sh:/setup.sh:ro" \
+            "${{ matrix.image }}" bash -euo pipefail -c '
+              bash /setup.sh >/dev/null
+              bash /setup.sh
+              echo "second run OK"
+            '
+
+  # A host that came from the old installer must end up on the new repository
+  # after re-running the script.
+  migrate:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: ubuntu:22.04
+            old_repo: insaion-jammy
+          - image: ubuntu:24.04
+            old_repo: insaion-noble
+    steps:
+      - uses: actions/checkout@v6
+      - name: Migrate a Gemfury-era host
+        run: |
+          docker run --rm \
+            -e DEBIAN_FRONTEND=noninteractive \
+            -e INSAION_APT_REPO_URL="${{ vars.APT_REPO_URL || 'https://apt.insaion.com' }}" \
+            -e OLD_REPO="${{ matrix.old_repo }}" \
+            -v "${{ github.workspace }}/setup.sh:/setup.sh:ro" \
+            "${{ matrix.image }}" bash -euo pipefail -c '
+              apt-get update -qq
+              apt-get install -y -qq curl gnupg ca-certificates >/dev/null
+              # Reconstruct what the old installer left behind.
+              curl -fsSL "https://apt.fury.io/${OLD_REPO}/gpg.key" \
+                | gpg --dearmor -o /etc/apt/trusted.gpg.d/insaion.gpg
+              echo "deb https://apt.fury.io/${OLD_REPO}/ /" \
+                > /etc/apt/sources.list.d/insaion.list
+              curl -fsSL https://repos.influxdata.com/influxdata-archive.key \
+                | gpg --dearmor -o /etc/apt/trusted.gpg.d/influxdata-archive.gpg
+              echo "deb [signed-by=/etc/apt/trusted.gpg.d/influxdata-archive.gpg] https://repos.influxdata.com/debian stable main" \
+                > /etc/apt/sources.list.d/influxdata.list
+              apt-mark hold telegraf || true
+
+              bash /setup.sh
+
+              echo "--- asserting migration ---"
+              test -f /etc/apt/sources.list.d/insaion.sources
+              test ! -f /etc/apt/sources.list.d/insaion.list
+              test ! -f /etc/apt/trusted.gpg.d/insaion.gpg
+              test ! -f /etc/apt/sources.list.d/influxdata.list
+              # Written as an if: an "&& { exit 1; }" chain aborts the whole
+              # script under set -e when grep finds nothing, which is the case
+              # we are hoping for. grep without -q so pipefail does not see a
+              # SIGPIPE on a match and invert the answer.
+              if apt-mark showhold | grep telegraf >/dev/null; then
+                echo "telegraf is still held"; exit 1
+              fi
+              test -x /usr/lib/insaion-agent/bin/telegraf
+              echo "migration OK"
+            '
