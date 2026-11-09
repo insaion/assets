@@ -189,8 +189,11 @@ set_config_var() {
 # Write detected ROS distro so systemd can source it
 set_config_var "ROS_DISTRO" "$ROS_DISTRO"
 
-# Catch UI-provided variables from the CLI environment
-set_config_var "ENROLLMENT_KEY" "$ENROLLMENT_KEY"
+# Catch UI-provided variables from the CLI environment. ENROLLMENT_KEY is
+# deliberately not among them: it is an org-wide credential used once to
+# register, so it is passed to the package in the environment and never stored.
+# Remove a key an older installer wrote here.
+sed -i '/^[[:space:]]*\(export[[:space:]]\+\)\?ENROLLMENT_KEY=/d' "$CONFIG_FILE"
 set_config_var "CUSTOM_ROS_SETUP" "$CUSTOM_ROS_SETUP"
 
 # Global 
@@ -231,7 +234,27 @@ else
     apt-get install -y "$PACKAGE_NAME"
 fi
 
-# 8. Post-Installation Output
+# 8. Register the robot
+# postinst already registers on a fresh install or an upgrade. When the package
+# was already current, apt-get did not run it, so register here. --register is a
+# no-op on a robot that already holds a device token.
+REGISTER_FAILED=0
+if [ -n "${ENROLLMENT_KEY:-}" ] && [ ! -s /var/lib/insaion-agent/device_token.txt ]; then
+    echo "INFO: Registering this robot..."
+    # An agent older than --register ignores the flag and would start the
+    # daemon in the foreground; such a robot needs the upgrade first.
+    if ! insaion-agent --help 2>/dev/null | grep -q -- '--register'; then
+        echo "ERROR: the installed agent is too old to register this way. Run this script without INSAION_NO_UPGRADE."
+        REGISTER_FAILED=1
+    elif ENROLLMENT_KEY="$ENROLLMENT_KEY" insaion-agent --register; then
+        systemctl restart insaion-agent || true
+    else
+        REGISTER_FAILED=1
+    fi
+fi
+unset ENROLLMENT_KEY
+
+# 9. Post-Installation Output
 echo ""
 echo "=========================================="
 echo " Installation Complete!"
@@ -241,10 +264,14 @@ echo "The Insaion Agent has been installed and is running in the background."
 echo ""
 # The agent registers only with an enrollment key. Without one, and without a
 # previous registration, it logs that and stays stopped.
-if [ ! -s /var/lib/insaion-agent/device_token.txt ] && ! grep -q '^ENROLLMENT_KEY=..*' "$CONFIG_FILE" 2>/dev/null; then
-    echo "WARNING: no ENROLLMENT_KEY was given, so the agent cannot register this robot."
+if [ ! -s /var/lib/insaion-agent/device_token.txt ]; then
+    if [ "$REGISTER_FAILED" = "1" ]; then
+        echo "WARNING: this robot could not be registered (see the error above)."
+    else
+        echo "WARNING: no ENROLLMENT_KEY was given, so the agent cannot register this robot."
+    fi
     echo "  Copy the install command from Add device in the Insaion app and run it again,"
-    echo "  or set ENROLLMENT_KEY in $CONFIG_FILE and run: sudo systemctl restart insaion-agent"
+    echo "  or run: sudo ENROLLMENT_KEY=<key> insaion-agent --register && sudo systemctl start insaion-agent"
     echo ""
 fi
 echo "Useful Commands:"
