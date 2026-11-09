@@ -239,9 +239,14 @@ echo "=========================================="
 echo ""
 echo "The Insaion Agent has been installed and is running in the background."
 echo ""
-# echo "To pair this device, open your browser and navigate to:"
-# echo "http://$(hostname -I | awk '{print $1}'):9090"
-# echo ""
+# The agent registers only with an enrollment key. Without one, and without a
+# previous registration, it logs that and stays stopped.
+if [ ! -s /var/lib/insaion-agent/device_token.txt ] && ! grep -q '^ENROLLMENT_KEY=..*' "$CONFIG_FILE" 2>/dev/null; then
+    echo "WARNING: no ENROLLMENT_KEY was given, so the agent cannot register this robot."
+    echo "  Copy the install command from Add device in the Insaion app and run it again,"
+    echo "  or set ENROLLMENT_KEY in $CONFIG_FILE and run: sudo systemctl restart insaion-agent"
+    echo ""
+fi
 echo "Useful Commands:"
 echo "  - View live logs:           sudo journalctl -u insaion-agent -f"
 echo "  - Check status:             sudo systemctl status insaion-agent"
